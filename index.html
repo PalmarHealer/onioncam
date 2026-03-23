@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="OnionCam">
+  <meta name="theme-color" content="#000000">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <title>OnionCam</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      touch-action: none;
+    }
+
+    #camera {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: 1;
+    }
+
+    #overlay {
+      position: fixed;
+      z-index: 2;
+      opacity: 0.5;
+      touch-action: none;
+      transform-origin: 0 0;
+      display: none;
+      pointer-events: auto;
+    }
+
+    .controls {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 10;
+      padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+      background: linear-gradient(transparent, rgba(0,0,0,0.8));
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: #fff;
+      font-size: 13px;
+    }
+
+    .slider-row label {
+      min-width: 60px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+    }
+
+    .slider-row input[type="range"] {
+      flex: 1;
+      height: 4px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: rgba(255,255,255,0.3);
+      border-radius: 2px;
+      outline: none;
+    }
+
+    .slider-row input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+
+    .slider-row .value {
+      min-width: 36px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 14px;
+      border: none;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+
+    .btn:active {
+      transform: scale(0.96);
+    }
+
+    .btn-primary {
+      background: #fff;
+      color: #000;
+    }
+
+    .btn-secondary {
+      background: rgba(255,255,255,0.2);
+      color: #fff;
+    }
+
+    .btn-danger {
+      background: rgba(255,59,48,0.8);
+      color: #fff;
+    }
+
+    #filePicker {
+      display: none;
+    }
+
+    .startup-msg {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 5;
+      color: rgba(255,255,255,0.6);
+      font-size: 18px;
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    .startup-msg.hidden {
+      display: none;
+    }
+
+    .lock-btn {
+      width: 44px;
+      flex: none;
+      font-size: 18px;
+      padding: 14px 0;
+      text-align: center;
+    }
+
+    .lock-btn.locked {
+      background: rgba(255,149,0,0.8);
+    }
+  </style>
+</head>
+<body>
+  <video id="camera" autoplay playsinline muted></video>
+  <img id="overlay" alt="">
+  <input type="file" id="filePicker" accept="image/*">
+
+  <div id="startupMsg" class="startup-msg">
+    Tap "Load Image" to<br>choose an overlay photo
+  </div>
+
+  <div class="controls">
+    <div class="slider-row" id="opacityRow" style="display:none">
+      <label>Opacity</label>
+      <input type="range" id="opacitySlider" min="0" max="100" value="50">
+      <span class="value" id="opacityValue">50%</span>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="loadBtn">Load Image</button>
+      <button class="btn btn-secondary" id="flipBtn" style="display:none">Flip Cam</button>
+      <button class="btn btn-danger" id="clearBtn" style="display:none">Clear</button>
+      <button class="btn btn-secondary lock-btn" id="lockBtn" style="display:none" title="Lock overlay">🔓</button>
+    </div>
+  </div>
+
+  <script>
+    const video = document.getElementById('camera');
+    const overlay = document.getElementById('overlay');
+    const filePicker = document.getElementById('filePicker');
+    const opacitySlider = document.getElementById('opacitySlider');
+    const opacityValue = document.getElementById('opacityValue');
+    const opacityRow = document.getElementById('opacityRow');
+    const loadBtn = document.getElementById('loadBtn');
+    const flipBtn = document.getElementById('flipBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const lockBtn = document.getElementById('lockBtn');
+    const startupMsg = document.getElementById('startupMsg');
+
+    let facingMode = 'environment';
+    let overlayLocked = false;
+
+    // --- Camera ---
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
+          audio: false
+        });
+        video.srcObject = stream;
+      } catch (e) {
+        console.error('Camera error:', e);
+      }
+    }
+
+    flipBtn.addEventListener('click', () => {
+      // Stop current stream
+      if (video.srcObject) {
+        video.srcObject.getTracks().forEach(t => t.stop());
+      }
+      facingMode = facingMode === 'environment' ? 'user' : 'environment';
+      startCamera();
+    });
+
+    // --- File picker ---
+    loadBtn.addEventListener('click', () => filePicker.click());
+
+    filePicker.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      overlay.onload = () => {
+        // Center the image, fit to 60% of viewport width
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const scale = (vw * 0.6) / overlay.naturalWidth;
+        overlayState.scale = scale;
+        overlayState.x = (vw - overlay.naturalWidth * scale) / 2;
+        overlayState.y = (vh - overlay.naturalHeight * scale) / 2;
+        applyTransform();
+        overlay.style.display = 'block';
+        opacityRow.style.display = 'flex';
+        flipBtn.style.display = '';
+        clearBtn.style.display = '';
+        lockBtn.style.display = '';
+        startupMsg.classList.add('hidden');
+      };
+      overlay.src = url;
+      // Reset file input so same file can be re-selected
+      filePicker.value = '';
+    });
+
+    // --- Clear ---
+    clearBtn.addEventListener('click', () => {
+      overlay.style.display = 'none';
+      overlay.src = '';
+      opacityRow.style.display = 'none';
+      clearBtn.style.display = 'none';
+      lockBtn.style.display = 'none';
+      startupMsg.classList.remove('hidden');
+      overlayLocked = false;
+      lockBtn.textContent = '🔓';
+      lockBtn.classList.remove('locked');
+    });
+
+    // --- Lock ---
+    lockBtn.addEventListener('click', () => {
+      overlayLocked = !overlayLocked;
+      lockBtn.textContent = overlayLocked ? '🔒' : '🔓';
+      lockBtn.classList.toggle('locked', overlayLocked);
+    });
+
+    // --- Opacity ---
+    opacitySlider.addEventListener('input', () => {
+      const v = opacitySlider.value;
+      overlay.style.opacity = v / 100;
+      opacityValue.textContent = v + '%';
+    });
+
+    // --- Touch gestures for move + pinch-to-resize ---
+    const overlayState = { x: 0, y: 0, scale: 1 };
+
+    function applyTransform() {
+      overlay.style.transform = `translate(${overlayState.x}px, ${overlayState.y}px) scale(${overlayState.scale})`;
+    }
+
+    let startTouches = null;
+    let startState = null;
+
+    overlay.addEventListener('touchstart', (e) => {
+      if (overlayLocked) return;
+      e.preventDefault();
+      startTouches = Array.from(e.touches);
+      startState = { ...overlayState };
+    }, { passive: false });
+
+    overlay.addEventListener('touchmove', (e) => {
+      if (overlayLocked || !startTouches) return;
+      e.preventDefault();
+      const touches = Array.from(e.touches);
+
+      if (touches.length === 1 && startTouches.length === 1) {
+        // Pan
+        const dx = touches[0].clientX - startTouches[0].clientX;
+        const dy = touches[0].clientY - startTouches[0].clientY;
+        overlayState.x = startState.x + dx;
+        overlayState.y = startState.y + dy;
+      } else if (touches.length >= 2 && startTouches.length >= 2) {
+        // Pinch zoom + pan
+        const startDist = Math.hypot(
+          startTouches[1].clientX - startTouches[0].clientX,
+          startTouches[1].clientY - startTouches[0].clientY
+        );
+        const curDist = Math.hypot(
+          touches[1].clientX - touches[0].clientX,
+          touches[1].clientY - touches[0].clientY
+        );
+        const scaleRatio = curDist / startDist;
+        overlayState.scale = Math.max(0.05, startState.scale * scaleRatio);
+
+        // Pan with midpoint
+        const startMidX = (startTouches[0].clientX + startTouches[1].clientX) / 2;
+        const startMidY = (startTouches[0].clientY + startTouches[1].clientY) / 2;
+        const curMidX = (touches[0].clientX + touches[1].clientX) / 2;
+        const curMidY = (touches[0].clientY + touches[1].clientY) / 2;
+        overlayState.x = startState.x + (curMidX - startMidX);
+        overlayState.y = startState.y + (curMidY - startMidY);
+      }
+
+      applyTransform();
+    }, { passive: false });
+
+    overlay.addEventListener('touchend', (e) => {
+      if (e.touches.length === 0) {
+        startTouches = null;
+        startState = null;
+      }
+    });
+
+    // --- Mouse fallback for desktop testing ---
+    let mouseDown = false;
+    let mouseStart = null;
+
+    overlay.addEventListener('mousedown', (e) => {
+      if (overlayLocked) return;
+      mouseDown = true;
+      mouseStart = { mx: e.clientX, my: e.clientY, ox: overlayState.x, oy: overlayState.y };
+      e.preventDefault();
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!mouseDown || !mouseStart) return;
+      overlayState.x = mouseStart.ox + (e.clientX - mouseStart.mx);
+      overlayState.y = mouseStart.oy + (e.clientY - mouseStart.my);
+      applyTransform();
+    });
+
+    window.addEventListener('mouseup', () => {
+      mouseDown = false;
+      mouseStart = null;
+    });
+
+    overlay.addEventListener('wheel', (e) => {
+      if (overlayLocked) return;
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.95 : 1.05;
+      overlayState.scale = Math.max(0.05, overlayState.scale * delta);
+      applyTransform();
+    }, { passive: false });
+
+    // --- Init ---
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js');
+    }
+    startCamera();
+  </script>
+</body>
+</html>
