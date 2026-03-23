@@ -41,6 +41,8 @@
 
     #overlay {
       position: fixed;
+      top: 0;
+      left: 0;
       z-index: 2;
       opacity: 0.5;
       touch-action: none;
@@ -244,8 +246,9 @@
         const vh = window.innerHeight;
         const scale = (vw * 0.6) / overlay.naturalWidth;
         overlayState.scale = scale;
-        overlayState.x = (vw - overlay.naturalWidth * scale) / 2;
-        overlayState.y = (vh - overlay.naturalHeight * scale) / 2;
+        // x,y represent the center of the image
+        overlayState.x = vw / 2;
+        overlayState.y = vh / 2;
         applyTransform();
         overlay.style.display = 'block';
         opacityRow.style.display = 'flex';
@@ -290,7 +293,10 @@
     const overlayState = { x: 0, y: 0, scale: 1 };
 
     function applyTransform() {
-      overlay.style.transform = `translate(${overlayState.x}px, ${overlayState.y}px) scale(${overlayState.scale})`;
+      // x,y = desired center of the image; offset by half the natural size so transform-origin (center) lands there
+      const tx = overlayState.x - overlay.naturalWidth / 2;
+      const ty = overlayState.y - overlay.naturalHeight / 2;
+      overlay.style.transform = `translate(${tx}px, ${ty}px) scale(${overlayState.scale})`;
     }
 
     let startTouches = null;
